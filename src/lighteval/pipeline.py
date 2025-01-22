@@ -122,6 +122,7 @@ class Pipeline:
         evaluation_tracker: EvaluationTracker,
         model_config=None,
         model=None,
+        config=None
     ):
         if not (model or model_config):
             raise ValueError("Must provide either a model or model config when creating a pipeline.")
@@ -136,7 +137,7 @@ class Pipeline:
         self.model_config = model_config
         self.evaluation_tracker = evaluation_tracker
         self.accelerator, self.parallel_context = self._init_parallelism_manager()
-        self.model = self._init_model(model_config, model)
+        self.model = self._init_model(model_config, model, config)
 
         self.evaluation_tracker.general_config_logger.log_model_info(self.model.model_info)
         self._init_tasks_and_requests(tasks=tasks)
@@ -164,7 +165,7 @@ class Pipeline:
 
         return accelerator, parallel_context
 
-    def _init_model(self, model_config, model):
+    def _init_model(self, model_config, model, config):
         logger.info("--- LOADING MODEL ---")
         if model_config is not None:
             if self.parallel_context:
@@ -188,6 +189,7 @@ class Pipeline:
                 use_chat_template=self.pipeline_parameters.use_chat_template,
                 env_config=self.pipeline_parameters.env_config,
                 accelerator=self.accelerator,
+                config=config
             )
 
     def _init_tasks_and_requests(self, tasks: str):

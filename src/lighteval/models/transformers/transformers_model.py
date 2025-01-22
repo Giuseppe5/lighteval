@@ -278,8 +278,10 @@ class TransformersModel(LightevalModel):
             try:
                 logger.info("Compiling the model")
                 self.model.model.compile()
+                print("Model compiled")
             except AttributeError as e:
-                logger.warning("Could not compile the model because: ", e)
+                logger.info("Could not compile the model because: ", e)
+                raise e
 
         self.model_name = _simplify_name(config.pretrained)
         self.model_sha = config.get_model_sha()
@@ -310,6 +312,7 @@ class TransformersModel(LightevalModel):
         cls,
         model: Union[AutoModelForCausalLM, LightevalModel],
         env_config: EnvConfig,
+        config: None,
         accelerator: "Accelerator" = None,
         tokenizer_name: str = None,  # custom tokenizer
         trust_remote_code: bool = False,
@@ -320,10 +323,10 @@ class TransformersModel(LightevalModel):
     ):
         # Slightly hackish way to test if the model is a AutoModelForCausalLM, since the instances don't
         # derive from this class explicitely
-        assert isinstance(model, LightevalModel) or type(model).__name__ in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values()
+        # assert isinstance(model, LightevalModel) or type(model).__name__ in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values()
 
-        if isinstance(model, LightevalModel):
-            return model
+        # if isinstance(model, LightevalModel):
+        #     return model
 
         # Instanciate the object without using __init__
         self = cls.__new__(cls)
@@ -369,6 +372,15 @@ class TransformersModel(LightevalModel):
             model_dtype=self.precision,
             model_size=model_size,
         )
+        if config.generation_config is None:
+            self.generation_parameters = config.generation_parameters
+            self.generation_config_dict = self.generation_parameters.to_transformers_dict()
+        else:
+            self.generation_config_dict = config.generation_config.to_dict()
+        self._max_length = self._init_max_length(config.max_length)
+        self.use_chat_template = config.use_chat_template
+
+        self._add_special_tokens = config.add_special_tokens if config.add_special_tokens is not None else False
         return self
 
     @property
@@ -880,7 +892,10 @@ class TransformersModel(LightevalModel):
                     input_ids=tokenized["input_ids"],
                     input_lengths=[len(item == 1) for item in tokenized["attention_mask"]],
                     input_mask=tokenized["attention_mask"],
-                    truncated=[max(len(c) - tokenized["input_ids"].shape[1], 0) for c in context],
+                    truncated=[
+                        len(c) - tokenized["input_ids"].shape[1] if len(c) > tokenized["input_ids"].shape[1] else 0
+                        for c in context
+                    ],
                     padded=[sum(mask == 0) for mask in tokenized["attention_mask"]],
                 )
 
